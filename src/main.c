@@ -867,6 +867,10 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 	const ltc_table_t* ltc_table = &app->ltc_table;
 	const light_buffers_t* lights = &app->light_buffers;
 	pipeline_with_bindings_t* pipeline = &pass->pipeline;
+
+        // Are we tracing rays with rtx?
+	pass->rtxON = app->device.ray_tracing_supported;
+
 	// Create a sampler for light textures
 	VkSamplerCreateInfo sampler_info = {
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -901,7 +905,7 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR },
 	};
 	get_materials_descriptor_layout(&layout_bindings[5], 5, &scene->materials);
-	uint32_t binding_count = COUNT_OF(layout_bindings);
+	uint32_t binding_count = COUNT_OF(layout_bindings) - (1 - pass->rtxON);
 	descriptor_set_request_t set_request = {
 		.stage_flags = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.min_descriptor_count = 1,
@@ -1022,6 +1026,8 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 		//format_uint("SAMPLE_POLYGON_LTC_CP=%u", polygon_technique == sample_polygon_ltc_cp),
 		copy_string((polygon_technique == sample_polygon_projected_solid_angle_biased) ? "USE_BIASED_PROJECTED_SOLID_ANGLE_SAMPLING" : "DONT_USE_BIASED_PROJECTED_SOLID_ANGLE_SAMPLING"),
 		format_uint("USE_FAST_ATAN=%u", app->render_settings.fast_atan),
+		
+		format_uint("RTX_ON=%u", app->device.ray_tracing_supported),
 	};
 
 	const uint32_t sz_defines = COUNT_OF(defines);
@@ -2545,7 +2551,7 @@ int update_application(application_t* app, const application_updates_t* update_i
 	// Return early, if there is nothing to update
 	if (!update.startup && !update.recreate_swapchain && !update.reload_shaders
 		&& !update.quick_load && !update.update_light_count && !update.update_light_textures
-		&& !update.reload_scene && !update.change_shading)
+		&& !update.reload_scene && !update.change_shading && !update.regenerate_noise)
 		return 0;
 	// Perform a quick load
 	if (update.quick_load)
