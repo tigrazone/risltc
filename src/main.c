@@ -502,22 +502,9 @@ void write_lights(void* data, application_t* app) {
 			.translation[0] = light->translation[0],
 			.translation[1] = light->translation[1],
 			.translation[2] = light->translation[2],
-			
-			.rotation[0][0] = light->rotation[0][0],
-			.rotation[0][1] = light->rotation[0][1],
-			.rotation[0][2] = light->rotation[0][2],
-			//.rotation[0][3] = light->rotation[0][3],
-			
-			.rotation[1][0] = light->rotation[1][0],
-			.rotation[1][1] = light->rotation[1][1],
-			.rotation[1][2] = light->rotation[1][2],
-			//.rotation[1][3] = light->rotation[1][3],
-			
-			.rotation[2][0] = light->rotation[2][0],
-			.rotation[2][1] = light->rotation[2][1],
-			.rotation[2][2] = light->rotation[2][2],
-			//.rotation[2][3] = light->rotation[2][3],
 		};
+		memcpy(&(light->rotation), &upload_light.rotation, sizeof(float) * 3 * 4);
+
 		create_and_assign_light_textures(NULL, &app->device, &app->scene_specification);
 		// Write fixed-size data
 		memcpy(((char*) data) + offset, &upload_light, POLYGONAL_LIGHT_FIXED_CONSTANT_BUFFER_SIZE);
