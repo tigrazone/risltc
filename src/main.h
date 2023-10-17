@@ -107,6 +107,10 @@ typedef struct render_settings_s {
 	float mis_visibility_estimate;
 	//! The technique used to sample polygonal lights
 	sample_polygon_technique_t polygon_sampling_technique;
+
+	//! The type of tabulated noise to use for Monte Carlo integration
+	noise_type_t noise_type;
+
 	//! Whether noise should be updated each frame
 	VkBool32 animate_noise;
 	//! Whether to accumulate frames
@@ -463,6 +467,9 @@ typedef struct application_updates_s {
 	VkBool32 reload_scene;
 	//! Settings that define how shading is performed have changed
 	VkBool32 change_shading;
+	//! The noise table needs to be recreated (usually transition between white
+	//! and blue noise)
+	VkBool32 regenerate_noise;
 	//! The current camera and lights should be stored to / loaded from a file
 	VkBool32 quick_save, quick_load;
 } application_updates_t;

@@ -229,11 +229,11 @@ int create_vulkan_device(device_t* device, const char* application_internal_name
 	vkGetDeviceQueue(device->device, device->queue_family_index, 0, &device->queue);
 	// Give feedback about ray tracing
 	if (device->ray_tracing_supported)
-		printf("Ray tracing is available.\n");
+		printf("RTX is available.\n");
 	else if (request_ray_tracing) {
-		printf("Ray tracing was requested but is unavailable. Try installing the latest GPU drivers or using a different physical device.\n");
-		return 1;
+		printf("RTX is unavailable. Use software raytracing\n");
 	}
+	
 	return 0;
 }
 

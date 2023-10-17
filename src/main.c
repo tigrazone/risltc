@@ -171,18 +171,8 @@ void specify_default_scene(scene_specification_t* scene) {
 	scene->polygonal_light_count = 1;
 	polygonal_light_t default_light;
 	memset(&default_light, 0, sizeof(default_light));
-	default_light.rotation_angles[0] = M_HALF_PI;
-	default_light.scaling_x = default_light.scaling_y = 1.0f;
-	default_light.radiant_flux[0] = default_light.radiant_flux[1] = default_light.radiant_flux[2] = 1.0f;
-	set_polygonal_light_vertex_count(&default_light, 4);
-	default_light.vertices_plane_space[0] = 0.0f;
-	default_light.vertices_plane_space[1] = 0.0f;
-	default_light.vertices_plane_space[4] = 1.0f;
-	default_light.vertices_plane_space[5] = 0.0f;
-	default_light.vertices_plane_space[8] = 1.0f;
-	default_light.vertices_plane_space[9] = 1.0f;
-	default_light.vertices_plane_space[12] = 0.0f;
-	default_light.vertices_plane_space[13] = 1.0f;
+	create_default_polygonal_light(&default_light);
+
 	scene->polygonal_lights = malloc(sizeof(default_light));
 	scene->polygonal_lights[0] = default_light;
 	// Try to quick load. Upon success, it will override the defaults above.
@@ -273,6 +263,8 @@ void destroy_render_targets(render_targets_t* render_targets, const device_t* de
 int create_render_targets(render_targets_t* targets, const device_t* device, const swapchain_t* swapchain) {
 	memset(targets, 0, sizeof(*targets));
 	VkFormat color_format = VK_FORMAT_R8G8B8A8_UNORM;
+	if (swapchain->format == VK_FORMAT_A2R10G10B10_UNORM_PACK32 || swapchain->format == VK_FORMAT_A2B10G10R10_UNORM_PACK32)
+		color_format = VK_FORMAT_A2R10G10B10_UNORM_PACK32;
 	image_request_t image_requests[] = {
 		{// depth buffer
 			.image_info = {
@@ -895,7 +887,7 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 	// Create descriptor sets for the shading pass
 	uint32_t light_texture_count = app->light_textures.image_count;
 	uint32_t light_count = app->scene_specification.polygonal_light_count;
-	VkDescriptorSetLayoutBinding layout_bindings[] = {
+	VkDescriptorSetLayoutBinding layout_bindings[] = {		
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER },
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER },
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER },
@@ -905,6 +897,7 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 2 },
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = light_texture_count },
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER }, // To store lights
+		//{ .descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE },
 		{ .descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR },
 	};
 	get_materials_descriptor_layout(&layout_bindings[5], 5, &scene->materials);
@@ -925,6 +918,13 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 	VkDescriptorImageInfo visibility_buffer_info = {
 		.imageLayout = VK_IMAGE_LAYOUT_GENERAL
 	};
+	
+	
+	VkDescriptorImageInfo noise_info = {
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.imageView = noise_table->noise_array.images[0].view
+	};
+	
 	VkDescriptorImageInfo ltc_table_infos[2] = {
 		{
 			.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -945,6 +945,7 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 		{ .dstBinding = 8, .pBufferInfo = &light_buffer_info },
 		{ .dstBinding = 7 },	// Light Textures
 		{ .dstBinding = 5 },	// Materials
+        //{ .dstBinding = 11, .pImageInfo = &noise_info },
 	};
 	// Light textures
 	VkDescriptorImageInfo* light_texture_writes = malloc(sizeof(VkDescriptorImageInfo) * light_texture_count);
@@ -1551,9 +1552,10 @@ int create_interface_pass(interface_pass_t* pass, const device_t* device, imgui_
 	};
 	pass->frame_count = swapchain->image_count;
 	uint32_t geometry_count = COUNT_OF(geometry_infos) * pass->frame_count;
+        const uint32_t sz_geometry_infos = COUNT_OF(geometry_infos);
 	VkBufferCreateInfo* duplicate_geometry_infos = malloc(sizeof(VkBufferCreateInfo) * geometry_count);
 	for (uint32_t i = 0; i != geometry_count; ++i)
-		duplicate_geometry_infos[i] = geometry_infos[i % COUNT_OF(geometry_infos)];
+		duplicate_geometry_infos[i] = geometry_infos[i % sz_geometry_infos];
 	if (create_aligned_buffers(&pass->geometry_allocation, device, duplicate_geometry_infos, geometry_count, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, device->physical_device_properties.limits.nonCoherentAtomSize)) {
 		printf("Failed to create geometry buffers for the interface pass.\n");
 		destroy_interface_pass(pass, device);
@@ -2509,6 +2511,7 @@ void destroy_application(application_t* app) {
 	destroy_light_textures(&app->light_textures, &app->device);
 	destroy_light_buffers(&app->light_buffers, &app->device, app->allocator);
 	destroy_constant_buffers(&app->constant_buffers, &app->device);
+	destroy_noise_table(&app->noise_table, &app->device);
 	destroy_ltc_table(&app->ltc_table, &app->device);
 	destroy_scene(&app->scene, &app->device);
 	destroy_experiment_list(&app->experiment_list);
@@ -2549,6 +2552,7 @@ int update_application(application_t* app, const application_updates_t* update_i
 		quick_load(&app->scene_specification, &update);
 	// Flag objects that need to be rebuilt because something changed directly
 	VkBool32 swapchain = update.recreate_swapchain;
+	VkBool32 noise = update.startup | update.regenerate_noise;
 	VkBool32 ltc_table = update.startup;
 	VkBool32 scene = update.startup | update.reload_scene;
 	VkBool32 render_targets = update.startup;
@@ -2570,7 +2574,7 @@ int update_application(application_t* app, const application_updates_t* update_i
 		render_pass |= swapchain | render_targets;
 		constant_buffers |= swapchain;
 		geometry_pass |= swapchain | scene | constant_buffers | render_targets;
-		shading_pass |= swapchain | ltc_table | scene | render_targets | constant_buffers | light_buffers | light_textures | geometry_pass | shading_pass | interface_pass | frame_queue;
+		shading_pass |= swapchain | noise | ltc_table | scene | render_targets | constant_buffers | light_buffers | light_textures | geometry_pass | shading_pass | interface_pass | frame_queue;
 		interface_pass |= swapchain | render_targets;
 		frame_queue |= swapchain;
 		accum_pass |= swapchain | render_targets;
@@ -2591,6 +2595,7 @@ int update_application(application_t* app, const application_updates_t* update_i
 	if (render_targets) destroy_render_targets(&app->render_targets, &app->device);
 	if (scene) destroy_scene(&app->scene, &app->device);
 	if (ltc_table) destroy_ltc_table(&app->ltc_table, &app->device);
+	if (noise) destroy_noise_table(&app->noise_table, &app->device);
 	// Attempt to recreate the swapchain and finish early if the window is
 	// minimized
 	if (swapchain) {
@@ -2602,8 +2607,10 @@ int update_application(application_t* app, const application_updates_t* update_i
 			return 1;
 		}
 	}
+
 	// Rebuild everything else
-	if (   (ltc_table && load_ltc_table(&app->ltc_table, &app->device, "data/ggx_ltc_fit", 51))
+	if (   (noise && load_noise_table(&app->noise_table, &app->device, get_default_noise_resolution(app->render_settings.noise_type), app->render_settings.noise_type))
+		|| (ltc_table && load_ltc_table(&app->ltc_table, &app->device, "data/ggx_ltc_fit", 51))
 		|| (scene && load_scene(&app->scene, &app->device, app->scene_specification.file_path, app->scene_specification.texture_path, VK_TRUE))
 		|| (render_targets && create_render_targets(&app->render_targets, &app->device, &app->swapchain))
 		|| (render_pass && create_render_pass(&app->render_pass, &app->device, &app->swapchain, &app->render_targets))
@@ -2744,6 +2751,8 @@ void setup_experiment(application_updates_t* updates, experiment_list_t* list, s
 	// Ensure that render settings are applied properly
 	if (render_settings->v_sync != list->experiment->render_settings.v_sync)
 		updates->recreate_swapchain = VK_TRUE;
+		if (render_settings->noise_type != list->experiment->render_settings.noise_type)
+			updates->regenerate_noise = VK_TRUE;
 	updates->change_shading = VK_TRUE;
 	(*render_settings) = list->experiment->render_settings;
 
@@ -2988,6 +2997,7 @@ void write_constants(void* data, application_t* app) {
 		.exposure_factor = app->render_settings.exposure_factor,
 		.roughness_factor = app->render_settings.roughness_factor,
 	};
+
 	set_noise_constants(constants.noise_resolution_mask, &constants.noise_texture_index_mask, constants.noise_random_numbers, &app->noise_table, app->render_settings.animate_noise);
 	get_world_to_projection_space(constants.world_to_projection_space, camera, get_aspect_ratio(&app->swapchain));
 	// Construct the transform that produces ray directions from pixel

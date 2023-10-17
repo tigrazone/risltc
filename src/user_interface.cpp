@@ -33,7 +33,7 @@ void specify_user_interface(application_updates_t* updates, application_t* app, 
 	scene_specification_t* scene = &app->scene_specification;
 	render_settings_t* settings = &app->render_settings;
 
-	/*
+	
 	// Display some help text
 	ImGui::Text("[?]");
 	if (ImGui::IsItemHovered())
@@ -62,7 +62,7 @@ void specify_user_interface(application_updates_t* updates, application_t* app, 
 	ImGui::SameLine();
 	const char* progress_texts[] = {" ......", ". .....", ".. ....", "... ...", ".... ..", "..... .", "...... "};
 	ImGui::Text(progress_texts[frame_index % COUNT_OF(progress_texts)]);
-	*/
+	
 
 	// Scene selection
 	int scene_index = 0;
@@ -142,10 +142,116 @@ void specify_user_interface(application_updates_t* updates, application_t* app, 
 		if (settings->sample_count_light < 1) settings->sample_count_light = 1;
 		updates->change_shading = VK_TRUE;
 	}
+
+	// Source of pseudorandom numbers
+	const char* noise_types[noise_type_full_count];
+	noise_types[noise_type_white] = "White noise";
+	noise_types[noise_type_blue] = "Blue noise (1D)";
+	noise_types[noise_type_sobol] = "Sobol (2+2D)";
+	noise_types[noise_type_owen] = "Owen-scrambled Sobol (2+2D)";
+	noise_types[noise_type_burley_owen] = "Burley's Owen-scrambled Sobol (2+2D)";
+	noise_types[noise_type_ahmed] = "Ahmed's blue-noise diffusion for Sobol (2+2D)";
+	noise_types[noise_type_blue_noise_dithered] = "Blue noise dithered (2D)";
+	if (ImGui::Combo("Noise type", (int*) &settings->noise_type, noise_types, noise_type_count))
+		updates->regenerate_noise = VK_TRUE;
+	ImGui::Checkbox("Animate noise", (bool*) &settings->animate_noise);
+
+
 	// Various rendering settings
 	if(ImGui::DragFloat("Exposure", &settings->exposure_factor, 0.05f, 0.0f, 200.0f, "%.2f")) *reset_accum = 1;
 
 	if(ImGui::DragFloat("Roughness factor", &settings->roughness_factor, 0.01f, 0.0f, 2.0f, "%.2f")) *reset_accum = 1;
+	// Polygonal light controls
+	if (ImGui::Checkbox("Show polygonal lights", (bool*) &settings->show_polygonal_lights))
+		updates->change_shading = VK_TRUE;
+
+	for (uint32_t i = 0; i < scene->polygonal_light_count; ++i) {
+		char* group_name = format_uint("Polygonal light %u", i);
+		polygonal_light_t* light = &scene->polygonal_lights[i];
+		if (ImGui::TreeNode(group_name)) {
+			float angles_degrees[3] = { light->rotation_angles[0] * M_180_DIV_PI, light->rotation_angles[1] * M_180_DIV_PI, light->rotation_angles[2] * M_180_DIV_PI};
+			ImGui::DragFloat3("Rotation (Euler angles)", angles_degrees, 0.1f, -180.0f, 180.0f);
+			for (uint32_t i = 0; i != 3; ++i)
+				light->rotation_angles[i] = angles_degrees[i] * M_PI_DIV_180;
+			float scalings[2] = { light->scaling_x, light->scaling_y };
+			ImGui::DragFloat2("Scaling (xy)", scalings, 0.01f, 0.01f, 100.0f);
+			light->scaling_x = scalings[0];
+			light->scaling_y = scalings[1];
+			ImGui::DragFloat3("Translation (xyz)", light->translation, 0.01f);
+			for (uint32_t i = 0; i != light->vertex_count; ++i) {
+				char* label = format_uint("Vertex %u", i);
+				ImGui::DragFloat2(label, &light->vertices_plane_space[i * 4], 0.01f);
+				free(label);
+			}
+			ImGui::ColorEdit3("Radiant flux", light->radiant_flux);
+			char texture_path[2048] = "";
+			if (light->texture_file_path) strcpy(texture_path, light->texture_file_path);
+			ImGui::InputText("Texture path (*.vkt)", texture_path, sizeof(texture_path));
+			if ((light->texture_file_path == NULL || std::strcmp(texture_path, light->texture_file_path) != 0)
+				&&  (std::strlen(texture_path) == 0
+				||  std::strlen(texture_path) > 4 && std::strcmp(".vkt", texture_path + strlen(texture_path) - 4) == 0))
+			{
+				updates->update_light_textures = VK_TRUE;
+				free(light->texture_file_path);
+				light->texture_file_path = copy_string(texture_path);
+			}
+			const char* polygon_texturing_techniques[polygon_texturing_count];
+			polygon_texturing_techniques[polygon_texturing_none] = "Disabled";
+			polygon_texturing_techniques[polygon_texturing_area] = "Texture";
+			polygon_texturing_techniques[polygon_texturing_portal] = "Light probe";
+			polygon_texturing_techniques[polygon_texturing_ies_profile] = "IES profile";
+			ImGui::Combo("Texture type", (int*) &light->texturing_technique, polygon_texturing_techniques, COUNT_OF(polygon_texturing_techniques));
+			if (ImGui::Button("Add vertex")) {
+				set_polygonal_light_vertex_count(light, light->vertex_count + 1);
+				float* vertices = light->vertices_plane_space;
+				size_t lvc4 = (light->vertex_count - 1) << 2;
+				vertices[lvc4] = 0.5f * (vertices[0] + vertices[lvc4 - 4]);
+				vertices[lvc4 + 1] = 0.5f * (vertices[1] + vertices[lvc4 - 4 + 1]);
+				updates->update_light_count = VK_TRUE;
+			}
+			if (light->vertex_count > 3) {
+				ImGui::SameLine();
+				if (ImGui::Button("Delete vertex")) {
+					set_polygonal_light_vertex_count(light, light->vertex_count - 1);
+					updates->update_light_count = VK_TRUE;
+				}
+			}
+			if (scene->polygonal_light_count > 0) {
+				ImGui::SameLine();
+				if (ImGui::Button("Delete light"))
+					light->vertex_count = 0;
+			}
+			ImGui::TreePop();
+		}
+		free(group_name);
+	}
+	// Go over all lights to see which of them have been deleted
+	uint32_t new_light_index = 0;
+	for (uint32_t i = 0; i < scene->polygonal_light_count; ++i) {
+		if (scene->polygonal_lights[i].vertex_count > 0) {
+			scene->polygonal_lights[new_light_index] = scene->polygonal_lights[i];
+			++new_light_index;
+		}
+		else {
+			destroy_polygonal_light(&scene->polygonal_lights[i]);
+			updates->update_light_count = VK_TRUE;
+		}
+	}
+	scene->polygonal_light_count = new_light_index;
+	if (ImGui::Button("Add polygonal light")) {
+		// Copy over old polygonal lights
+		scene_specification_t old = *scene;
+		scene->polygonal_lights = (polygonal_light_t*) malloc(sizeof(polygonal_light_t) * (scene->polygonal_light_count + 1));
+		memcpy(scene->polygonal_lights, old.polygonal_lights, sizeof(polygonal_light_t) * scene->polygonal_light_count);
+		free(old.polygonal_lights);
+		// Create a new one
+		polygonal_light_t default_light;
+		create_default_polygonal_light(&default_light);
+
+		scene->polygonal_lights[scene->polygonal_light_count] = default_light;
+		scene->polygonal_light_count = old.polygonal_light_count + 1;
+		updates->update_light_count = VK_TRUE;
+	}
 
 	// Show buttons for quick save and quick load
 	if (ImGui::Button("Quick save"))

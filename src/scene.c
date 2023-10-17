@@ -18,6 +18,7 @@
 #include "scene.h"
 #include "textures.h"
 #include "string_utilities.h"
+#include "math_utilities.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -133,6 +134,41 @@ void destroy_acceleration_structure(acceleration_structure_t* structure, const d
 }
 
 
+int create_acceleration_structure_software(acceleration_structure_t* structure, const device_t* device, const mesh_t* mesh, const char* mesh_data) {
+
+	uint32_t primitive_count = (uint32_t) mesh->triangle_count;
+	uint32_t triangle_count3 = (uint32_t) mesh->triangle_count * 3;
+		
+	float *vertices = (float *) malloc(sizeof(float) * triangle_count3);
+	if (!vertices) {
+		printf("Allocation error.");
+		return 1;
+	}	
+	
+	// Dequantize the mesh data
+	const uint32_t* quantized_positions = (const uint32_t*) (mesh_data + mesh->positions.offset);
+	
+	uint32_t i2 = 0;
+	for (uint32_t i = 0; i != triangle_count3; ++i) {
+		uint32_t quantized_position[2] = {quantized_positions[i2], quantized_positions[i2 + 1]};
+		float position[3] = {
+			(float) (quantized_position[0] & 0x1FFFFF),
+			(float) (((quantized_position[0] & 0xFFE00000) >> 21) | ((quantized_position[1] & 0x3FF) << 11)),
+			(float) ((quantized_position[1] & 0x7FFFFC00) >> 10)
+		};
+		for (uint32_t j = 0; j != 3; ++j)
+			vertices[i2 + i + j] = position[j] * mesh->dequantization_factor[j] + mesh->dequantization_summand[j];
+
+		i2 += 2;
+	}
+	
+	// Used only for bvh creation. In shaders used only quantized positions
+	free(vertices);
+	
+	return 0;
+}	
+
+
 /*! Constructs top- and bottom-level acceleration structures for the given mesh
 	\param structure The output structure. Cleaned up by destroy_scene().
 	\param device A device that has to support ray tracing. Otherwise this
@@ -141,11 +177,17 @@ void destroy_acceleration_structure(acceleration_structure_t* structure, const d
 	\param mesh_data Pointer to the already mapped memory of the staging mesh.
 	\return 0 on success.*/
 int create_acceleration_structure(acceleration_structure_t* structure, const device_t* device, const mesh_t* mesh, const char* mesh_data) {
-	memset(structure, 0, sizeof(*structure));
+	uint32_t primitive_count = (uint32_t) mesh->triangle_count;
+	const uint32_t triangle_count3 = (uint32_t) mesh->triangle_count * 3;
 	if (!device->ray_tracing_supported) {
 		printf("Cannot create an acceleration structure without ray tracing support.\n");
-		return 1;
+                printf("BUT from now create software BVH\n");
+		
+		return create_acceleration_structure_software(structure, device, mesh, mesh_data);
 	}
+	
+	memset(structure, 0, sizeof(*structure));
+
 	VK_LOAD(vkGetAccelerationStructureBuildSizesKHR)
 	VK_LOAD(vkCreateAccelerationStructureKHR)
 	VK_LOAD(vkGetAccelerationStructureDeviceAddressKHR)
@@ -174,7 +216,6 @@ int create_acceleration_structure(acceleration_structure_t* structure, const dev
 		return 1;
 	}
 
-	const uint32_t triangle_count3 = (uint32_t) mesh->triangle_count * 3;
 
 	// Dequantize the mesh data
 	const uint32_t* quantized_positions = (const uint32_t*) (mesh_data + mesh->positions.offset);
@@ -201,7 +242,7 @@ int create_acceleration_structure(acceleration_structure_t* structure, const dev
 		i3j = i3;
 	}
 	// Figure out how big the buffers for the bottom-level need to be
-	uint32_t primitive_count = (uint32_t) mesh->triangle_count;
+	
 	VkAccelerationStructureBuildSizesInfoKHR bottom_sizes = {
 		.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR,
 	};
@@ -432,6 +473,29 @@ int load_scene(scene_t* scene, const device_t* device, const char* file_path, co
 		destroy_scene(scene, device);
 		return 1;
 	}
+
+	double start_time = glfwGetTime();
+
+	fseek(file, 0, SEEK_END);
+	long file_size = ftell(file);
+
+	fseek(file, 0, SEEK_SET);
+
+	float conv_num;
+	char kb_mega_giga;
+
+	printf("\nSCENE file %s\nsize: ", file_path);
+
+	if (file_size < 1001)
+	{
+		printf("%lld\n", file_size);
+	}
+	else
+	{
+		convert_mega_giga((float)file_size, &conv_num, &kb_mega_giga);
+		printf("%.2f%cb\n", conv_num, kb_mega_giga);
+	}
+
 	// Read the header
 	uint32_t file_marker, version;
 	fread(&file_marker, sizeof(file_marker), 1, file);
@@ -446,7 +510,18 @@ int load_scene(scene_t* scene, const device_t* device, const char* file_path, co
 	fread(&scene->mesh.triangle_count, sizeof(uint64_t), 1, file);
 	fread(scene->mesh.dequantization_factor, sizeof(float), 3, file);
 	fread(scene->mesh.dequantization_summand, sizeof(float), 3, file);
-	printf("Triangle count: %llu\n", scene->mesh.triangle_count);
+
+	printf("Triangle count: ");
+	if (scene->mesh.triangle_count < 10001)
+	{
+		printf("%lld\n", scene->mesh.triangle_count);
+	}
+	else
+	{
+		convert_mega_giga((float)scene->mesh.triangle_count, &conv_num, &kb_mega_giga);
+		printf("%.2f%c\n", conv_num, kb_mega_giga);
+	}
+
 	// If there are no triangles, abort
 	if (scene->mesh.triangle_count == 0) {
 		printf("The scene file at path %s is completely empty, i.e. it holds 0 triangles.\n", file_path);
@@ -540,14 +615,18 @@ int load_scene(scene_t* scene, const device_t* device, const char* file_path, co
 	uint32_t texture_count = (uint32_t) (scene->materials.material_count * material_texture_count);
 	char** texture_file_paths = malloc(sizeof(char*) * texture_count);
 	memset(texture_file_paths, 0, sizeof(char*) * texture_count);
+
+	uint32_t i_mtc = 0;
 	for (uint32_t i = 0; i != scene->materials.material_count; ++i) {
 		for (uint32_t j = 0; j != material_texture_count; ++j) {
 			const char* path_pieces[] = {
 				texture_path, "/", scene->materials.material_names[i], "_",
 				get_material_texture_suffix((material_texture_type_t) j), ".vkt"
 			};
-			texture_file_paths[i * material_texture_count + j] = concatenate_strings(COUNT_OF(path_pieces), path_pieces);
+			texture_file_paths[i_mtc + j] = concatenate_strings(COUNT_OF(path_pieces), path_pieces);
 		}
+
+		i_mtc += material_texture_count;
 	}
 	result = load_2d_textures(&scene->materials.textures, device, texture_count, (const char* const*) texture_file_paths, VK_IMAGE_USAGE_SAMPLED_BIT);
 	for (uint32_t i = 0; i != texture_count; ++i)
@@ -571,6 +650,9 @@ int load_scene(scene_t* scene, const device_t* device, const char* file_path, co
 		destroy_scene(scene, device);
 		return 1;
 	}
+
+	printf("SCENE LOADED in %.1fs\n\n", (float)(glfwGetTime() - start_time));
+
 	return 0;
 }
 
