@@ -28,12 +28,22 @@ struct polygonal_light_t {
 	//! By default the polygon acts as Lambertian emitter, which emits this
 	//! radiance at each surface point. The radiance may get scaled by a
 	//! texture.
-	vec3 surface_radiance;
+	vec3 surface_radiance;	
+	float inv_scaling_x;
+	
 	//! The dot product between this vector and a point in homogeneous
 	//! coordinates is zero, if the point is on the plane of this light
 	//! source. plane.xyz has unit length.
-	vec4 plane;
+	vec4 plane;	
+	
+	vec3 translation;
+	float inv_scaling_y;
+	
+	uint texturing_technique;
+	uint texture_index;	
 	uint vertex_count;
+	
+	mat3 rotation;
 #ifdef MAX_POLYGONAL_LIGHT_VERTEX_COUNT
 	//! The 3D vertex locations of the polygon in world space. If vertex_count 
 	//! < MAX_POLYGONAL_LIGHT_VERTEX_COUNT, the first vertex is repeated at

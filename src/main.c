@@ -52,6 +52,16 @@ const char* const g_scene_paths[][4] = {
 	{"Bistro Interior", "data/Bistro_interior.vks", "data/Bistro_textures", "data/quicksaves/Bistro_interior.save"},
 	{"Bistro Exterior", "data/Bistro_exterior.vks", "data/Bistro_textures", "data/quicksaves/Bistro_exterior.save"},
 	{"Zero Day", "data/zeroday.vks", "data/ZeroDay_textures", "data/quicksaves/ZeroDay.save"},
+	
+	{"Cornell box", "data/cornell_box.vks", "data/cornell_box_textures", "data/quicksaves/cornell_box.save"},
+	{"MIS plane", "data/mis_plane.vks", "data/mis_plane_textures", "data/quicksaves/mis_plane.save"},
+	{"Roughness planes", "data/roughness_planes.vks", "data/roughness_planes_textures", "data/quicksaves/roughness_planes.save"},
+	{"Shadowed plane", "data/shadowed_plane.vks", "data/shadowed_plane_textures", "data/quicksaves/shadowed_plane.save"},
+	{"Arcade", "data/Arcade.vks", "data/Arcade_textures", "data/quicksaves/Arcade.save"},
+	{"Living room", "data/living_room.vks", "data/living_room_textures", "data/quicksaves/living_room.save"},
+	{"Attic", "data/attic.vks", "data/attic_textures", "data/quicksaves/attic.save"},
+	{"Bistro inside", "data/Bistro_inside.vks", "data/Bistro_textures", "data/quicksaves/Bistro_inside.save"},
+	{"Bistro outside", "data/Bistro_outside.vks", "data/Bistro_textures", "data/quicksaves/Bistro_outside.save"},
 };
 
 
@@ -491,6 +501,30 @@ void write_lights(void* data, application_t* app) {
 			.plane[2] = light->plane[2],
 			.plane[3] = light->plane[3],
 			.vertex_count = light->vertex_count,
+			
+			.texturing_technique = light->texturing_technique,			
+			.texture_index = light->texture_index,	
+			
+			.inv_scaling_x = light->inv_scaling_x,			
+			.inv_scaling_y = light->inv_scaling_y,
+			.translation[0] = light->translation[0],
+			.translation[1] = light->translation[1],
+			.translation[2] = light->translation[2],
+			
+			.rotation[0][0] = light->rotation[0][0],
+			.rotation[0][1] = light->rotation[0][1],
+			.rotation[0][2] = light->rotation[0][2],
+			//.rotation[0][3] = light->rotation[0][3],
+			
+			.rotation[1][0] = light->rotation[1][0],
+			.rotation[1][1] = light->rotation[1][1],
+			.rotation[1][2] = light->rotation[1][2],
+			//.rotation[1][3] = light->rotation[1][3],
+			
+			.rotation[2][0] = light->rotation[2][0],
+			.rotation[2][1] = light->rotation[2][1],
+			.rotation[2][2] = light->rotation[2][2],
+			//.rotation[2][3] = light->rotation[2][3],
 		};
 		create_and_assign_light_textures(NULL, &app->device, &app->scene_specification);
 		// Write fixed-size data

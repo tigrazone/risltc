@@ -101,8 +101,44 @@ void get_polygon_visibility(inout bool visibility, vec3 sampled_dir, vec3 shadin
 	\param polygonal_light The light source for which the incoming radiance is
 		evaluated.
 	\return Received radiance.*/
-vec3 get_polygon_radiance(vec3 sampled_dir, vec3 shading_position, polygonal_light_t polygonal_light) {
+vec3 get_polygon_radiance(vec3 sampled_dir, vec3 shading_position, polygonal_light_t polygonal_light)
+{
 	vec3 radiance = polygonal_light.surface_radiance;
+	uint technique = polygonal_light.texturing_technique;
+	if (technique != polygon_texturing_none)
+	{
+		vec2 tex_coord;
+		if (technique == polygon_texturing_area)
+		{
+			// Intersect the ray with the plane of the light source
+			float intersection_t = -dot(vec4(shading_position, 1.0f), polygonal_light.plane) / dot(sampled_dir, polygonal_light.plane.xyz);
+			vec3 intersection = shading_position + intersection_t * sampled_dir;
+			// Transform to plane space
+			intersection -= polygonal_light.translation;
+			tex_coord = (transpose(polygonal_light.rotation) * intersection).xy;
+			tex_coord *= vec2(polygonal_light.inv_scaling_x, polygonal_light.inv_scaling_y);
+		}
+		else
+		{
+			vec3 lookup_dir;
+			if (technique == polygon_texturing_ies_profile)
+			{
+				// For IES profiles, we transform to plane space
+				lookup_dir = transpose(polygonal_light.rotation) * sampled_dir;
+				// IES profiles already include this cosine term, so we divide
+				// it out
+				radiance /= abs(lookup_dir.z);
+			}
+			else
+				// This code is designed to be compatible with the coordinate
+				// system used for HDRI Haven light probes
+				lookup_dir = vec3(-sampled_dir.x, sampled_dir.y, sampled_dir.z);
+			// Now we compute spherical coordinates
+			tex_coord.x = atan(lookup_dir.y, lookup_dir.x) * M_HALF_INV_PI;
+			tex_coord.y = acos(lookup_dir.z) * M_INV_PI;
+		}
+		radiance *= textureLod(g_light_textures[polygonal_light.texture_index], tex_coord, 0.0f).rgb;
+	}
 	return radiance;
 }
 

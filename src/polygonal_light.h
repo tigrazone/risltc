@@ -96,6 +96,7 @@ typedef struct polygonal_light_s {
 	//! Written by update_polygonal_light() but allocated before. Due to GLSL
 	//! padding rules, vertex i is at entries 4 * i + 0 to 4 * i + 2.
 	float* vertices_world_space;
+	float* fan_areas;
 } polygonal_light_t;
 
 /*! This struct represents a convex polygonal light source. The polygon is
@@ -104,10 +105,19 @@ typedef struct polygonal_light_s {
 typedef struct polygonal_light_upload_s {
 	//! Written by update_polygonal_light()
 	float surface_radiance[3];
-	float padding_1;
+	float inv_scaling_x;
+	
 	float plane[4];
+	
+	float translation[3];
+	float inv_scaling_y;
+	
+	polygon_texturing_technique_t texturing_technique;
+	uint32_t texture_index;
 	uint32_t vertex_count;
-	float padding_2[3];
+	uint32_t padding_0;
+	
+	float rotation[3][4];
 } polygonal_light_upload_t;
 
 //! This many bytes at the beginning of the structure polygonal_light_t are
@@ -116,7 +126,7 @@ typedef struct polygonal_light_upload_s {
 
 //! This many bytes at the beginning of the structure polygonal_light_t are
 //! written into a light buffer. After that, there is variable size data.
-#define POLYGONAL_LIGHT_FIXED_CONSTANT_BUFFER_SIZE (sizeof(float) * 12)
+#define POLYGONAL_LIGHT_FIXED_CONSTANT_BUFFER_SIZE (sizeof(float) * 24 + sizeof(uint32_t) * 4)
 
 
 //! Sets the vertex_count member and allocates the appropriate amount of memory

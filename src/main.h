@@ -128,6 +128,16 @@ typedef enum scene_index_e
 	scene_bistro_inside,
 	scene_bistro_outside,
 	scene_zeroday,
+	
+	scene_cornell_box,
+	scene_mis_plane,
+	scene_roughness_planes,
+	scene_shadowed_plane,
+	scene_arcade,
+	scene_living_room,
+	scene_attic,
+	scene_bistro_inside1,
+	scene_bistro_outside1,
 	scene_count
 } scene_index_t;
 
