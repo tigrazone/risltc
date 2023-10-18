@@ -51,9 +51,6 @@
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-#include "math_constants.glsl"
-
-
 /*! This structure carries intermediate results that only need to be computed
 	once per polygon and shading point to take samples proportional to solid
 	angle. Sampling is performed by subdividing the convex polygon into

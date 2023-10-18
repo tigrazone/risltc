@@ -13,6 +13,9 @@
 //  You should have received a copy of the GNU General Public License
 //  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#define MIN_POLYGON_VERTEX_COUNT_BEFORE_CLIPPING 3
+#define MAX_POLYGONAL_LIGHT_VERTEX_COUNT 3
+#define MAX_POLYGON_VERTEX_COUNT 4
 
 #ifndef M_PI
 	#define M_PI 3.1415926535897932384626433832795f

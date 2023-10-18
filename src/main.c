@@ -973,9 +973,11 @@ int create_shading_pass(shading_pass_t* pass, application_t* app)
 		format_uint("LIGHT_SAMPLES=%u", app->render_settings.sample_count_light),
 		//format_uint("LIGHT_SAMPLES_CLAMPED=%u", (app->render_settings.sample_count_light < 33) ? app->render_settings.sample_count_light: 33),
 		format_uint("LIGHT_TEXTURE_COUNT=%u", app->light_textures.image_count),
+		/*
 		format_uint("MIN_POLYGON_VERTEX_COUNT_BEFORE_CLIPPING=%u", min_polygonal_light_vertex_count),
 		format_uint("MAX_POLYGONAL_LIGHT_VERTEX_COUNT=%u", max_polygonal_light_vertex_count),
 		format_uint("MAX_POLYGON_VERTEX_COUNT=%u", max_polygon_vertex_count),
+		*/
 		format_uint("SAMPLE_COUNT=%u", app->render_settings.sample_count),
 		format_uint("SAMPLE_COUNT_CLAMPED=%u", (app->render_settings.sample_count < 33) ? app->render_settings.sample_count : 33),
 		format_uint("MIS_HEURISTIC_BALANCE=%u", mis_heuristic == mis_heuristic_balance),

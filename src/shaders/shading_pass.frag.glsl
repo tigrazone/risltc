@@ -25,6 +25,7 @@
 #extension GL_EXT_ray_query : enable
 #endif
 
+#include "math_constants.glsl"
 #include "shared_constants.glsl"
 
 #include "noise_utility.glsl"
