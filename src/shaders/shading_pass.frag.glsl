@@ -524,9 +524,10 @@ void main() {
 		shading_data = get_shading_data(pixel, int(primitive_index), view_ray_direction);
 		view_ray_end = vec4(shading_data.position, 1.0f);
 	}
-
+	
+	//this is light! visibility_pass.vert.glsl set this bit
 	if ((primitive_index >> 31) > 0) {
-		final_color = vec3(1);
+		final_color = vec3(1); //only white? MUST be find real emission color
 	} else {
 		// Get ready to use linearly transformed cosines
 		float fresnel_luminance = dot(shading_data.fresnel_0, luminance_weights);
